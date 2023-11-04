@@ -30,8 +30,8 @@ os.environ["CUDA_LAUNCH_BLOCKING"]="1"
 train_df = pd.read_csv(os.getcwd() + "/lab2/" + "nlp-lab-dm23/train.csv")
 train_df = train_df.sample(frac=1).reset_index(drop=True)
 test_df = pd.read_csv(os.getcwd() + "/lab2/" + "nlp-lab-dm23/test.csv")
-train_df["Total text"] = train_df[['Description', "Title"]].agg('-'.join, axis=1)
-print(train_df["Total text"])
+#train_df["Total text"] = train_df['Description'] + ". Title: " + train_df["Title"]
+train_df["Total text"] = train_df[["Title","Description"]].agg('-'.join, axis=1)
 train_text, val_text, train_labels, val_labels = train_test_split(train_df["Total text"], train_df['Class Index'], 
                                                                     random_state=2018, 
                                                                     test_size=0.2, 
@@ -42,7 +42,6 @@ bert = BertModel.from_pretrained("bert-base-uncased")
 
 seq_len = [len(i.split()) for i in train_text]
 
-pd.Series(seq_len).hist(bins = 30)
 max_seq_len = max(seq_len)
 
 # tokenize and encode sequences in the training set
@@ -79,7 +78,7 @@ print("val_y:",val_y)
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
 
 #define a batch size
-batch_size = 32
+batch_size = 64
 
 # wrap tensors
 train_data = TensorDataset(train_seq, train_mask, train_y)
@@ -110,30 +109,14 @@ class BERT_Arch(nn.Module):
     def __init__(self, bert,label_map):
         super(BERT_Arch, self).__init__()
         self.bert = bert 
-      
-        # dropout layer
-        self.dropout = nn.Dropout(0.1)
-        # relu activation function
-        self.relu =  nn.ReLU()
-        # dense layer 1
         self.fc1 = nn.Linear(768,len(label_map))
-        # dense layer 2 (Output layer)
-        self.fc2 = nn.Linear(512,128)
-        self.fc3 = nn.Linear(128, len(label_map))
-        #softmax activation function
         self.softmax = nn.LogSoftmax(dim=1)
-        #define the forward pass
+        
     def forward(self, sent_id, mask):
         #pass the inputs to the model 
         outputs = self.bert(sent_id, attention_mask=mask)
-        cls_hs = outputs.pooler_output#outputs.last_hidden_state[:, 0, :]#
+        cls_hs = outputs.pooler_output # outputs.last_hidden_state[:, 0, :]
         x = self.fc1(cls_hs)
-        # x = self.relu(x)
-        # x = self.dropout(x)
-        # # output layer
-        # x = self.fc2(x)
-        # x = self.fc3(x)
-        # # apply softmax activation
         x = self.softmax(x)
         return x
 
@@ -147,10 +130,10 @@ model = BERT_Arch(bert, label_map)
 model = model.to(device)
 
 # optimizer from hugging face transformers
-from transformers import AdamW
+from transformers import AdamW, Adafactor
 
 # define the optimizer
-optimizer = AdamW(model.parameters(), lr = 1e-4)
+optimizer = AdamW(model.parameters(), lr=1e-3)
 
 from sklearn.utils.class_weight import compute_class_weight
 
@@ -164,10 +147,10 @@ weights= torch.tensor(class_wts,dtype=torch.float)
 weights = weights.to(device)
 
 # loss function
-cross_entropy  = nn.NLLLoss(weight=weights) 
+cross_entropy = nn.NLLLoss(weight=weights) 
 
 # number of training epochs
-epochs = 5
+epochs = 10
 
 # function to train the model
 def train():
@@ -211,7 +194,7 @@ def train():
         loss.backward()
 
         # clip the the gradients to 1.0. It helps in preventing the exploding gradient problem
-        # torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
 
         # update parameters
         optimizer.step()
@@ -349,7 +332,6 @@ tokens_test = tokenizer.batch_encode_plus(
 test_seq = torch.tensor(tokens_test['input_ids'])
 test_mask = torch.tensor(tokens_test['attention_mask'])
 test_y = torch.tensor(test_labels.tolist())
-# test_y = test_y.apply_(lambda x: x-1)
 print("test_y:",test_y)
 
 # get predictions for test data
@@ -362,47 +344,4 @@ vfunc = np.vectorize(lambda x: x + 1)
 preds = vfunc(preds)
 print("preds: ", preds)
 submission = pd.DataFrame({"ID": test_y, "Class Index": preds}, )
-submission.to_csv("submission.csv", index=False)
-#print("F1 on test: ", f1_score(test_y, preds, average="micro"))
-#print(classification_report(test_y, preds))
-
-# class Prediction:
-#     def __init__(self):
-#         path = 'topic_saved_weights.pt'
-
-#         checkpoint = torch.load(path,map_location=device)
-#         self.predictor = checkpoint.get("model")
-#         self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-#         self.tag = checkpoint.get("id_map")
-
-#     def predict(self,text):
-#         tokens = self.tokenizer.tokenize(text)
-#         tokens = tokens[:max_seq_len - 2]
-#         tokens = ['[CLS]'] + tokens + ['[SEP]']
-
-#         input_ids = self.tokenizer.convert_tokens_to_ids(tokens)
-#         input_ids = input_ids + [0] * (max_seq_len-len(input_ids))
-#         input_ids = torch.tensor(input_ids).unsqueeze(0)
-#         input_ids = input_ids.to(device)
-
-#         input_mask = [1]*len(tokens) + [0] * (max_seq_len - len(tokens))
-#         input_mask = torch.tensor(input_mask).unsqueeze(0)
-#         input_mask = input_mask.to(device)
-
-#         logits = self.predictor(input_ids,input_mask)
-#         prob = torch.nn.functional.softmax(logits,dim=1)
-#         result = [(self.tag[idx],item *100) for idx,item in enumerate(prob[0].tolist())]
-#         preds = logits.detach().cpu().numpy()
-#         pred_val = np.argmax(preds)
-#         pred_val = self.tag[pred_val]
-#         return result,pred_val
-
-# pred = Prediction()
-
-# list_input = ["Play music from my relentless playlist",
-#              "I rate this essay a four of 6"]
-
-# for item in list_input:
-#     confidence,pred_val = pred.predict(item)
-#     print(pred_val)
-#     print(confidence)
+submission.to_csv("submission_bert.csv", index=False)
