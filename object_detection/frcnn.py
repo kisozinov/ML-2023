@@ -42,9 +42,7 @@ class CustomDataset(Dataset):
         img_name = self.annotations["images"][idx]["file_name"]
         img_path = os.path.join(os.getcwd() + "/" + self.image_folder, img_name)
         
-        # Загрузка изображения
         image = Image.open(img_path).convert("RGB")
-        # id изображения для маппинга в аннотации
         image_id = self.annotations["images"][idx]["id"]
         annotations = [ann for ann in self.annotations["annotations"] if ann["image_id"] == image_id]
 
@@ -78,7 +76,6 @@ class LocalContrastNormalization:
     def __call__(self, sample):
         image = sample
 
-        # Применение Local Contrast Normalization
         image = exposure.equalize_adapthist(image.numpy(), clip_limit=0.03)
 
         return torch.from_numpy(image)
@@ -87,28 +84,23 @@ class LocalResponseNormalization:
     def __call__(self, sample):
         image = sample
 
-        # Применение Local Response Normalization
         radius = 2
         alpha = 2e-05
         beta = 0.75
         bias = 1.0
 
-        # Переводим изображение в numpy array для обработки
         image_np = image.numpy()
         
-        # Применяем LRN
         image_np = image_np / (bias + alpha * np.power(image_np, 2))
         image_np = image_np / np.power(1.0 + (image_np.sum(axis=0, keepdims=True) * beta), radius)
 
-        # Возвращаем как тензор
-        #print({'image': torch.from_numpy(image_np), 'annotations': sample['annotations']})
         return torch.from_numpy(image_np)
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {device}")
 model = torchvision.models.detection.fasterrcnn_resnet50_fpn(weights=FasterRCNN_ResNet50_FPN_Weights.DEFAULT) # pretrained=False
-num_classes = 12  # Замените на количество классов в вашей задаче
+num_classes = 12
 in_features = model.roi_heads.box_predictor.cls_score.in_features
 model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
 model.to(device)
@@ -133,7 +125,6 @@ optimizer = torch.optim.SGD(params, lr=0.005, momentum=0.9, weight_decay=0.0005)
 lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
 criterion = torch.nn.CrossEntropyLoss()
 
-# print(next(iter(train_loader)))
 
 num_epochs = 3
 for epoch in range(num_epochs):
@@ -143,7 +134,6 @@ for epoch in range(num_epochs):
         for batch in train_loader:
             images, targets = batch['images'], batch['targets']
             
-            # Обработка батча для передачи в модель
             images = [image.to(device) for image in images]
             targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
             
@@ -161,7 +151,6 @@ for epoch in range(num_epochs):
 
     average_loss = epoch_loss / len(train_loader)
     print(f'Epoch {epoch + 1}/{num_epochs}, Average Loss: {average_loss:.4f}')
-    #evaluate(model, val_loader, device=device)
 
     # Validation    
     model.eval()
@@ -180,5 +169,4 @@ for epoch in range(num_epochs):
                 pbar.update(1)
     pprint(metric.compute())
     
-# Сохранение обученной модели
 torch.save(model.state_dict(), 'trained_model.pth')

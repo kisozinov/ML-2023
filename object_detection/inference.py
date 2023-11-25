@@ -14,12 +14,10 @@ class TestDataset(Dataset):
         self.image_folder = image_folder
         self.transform = transform
         self.image_names = os.listdir(image_folder)
-        test_file_names_path = "data/test_file_names.json"  # Укажите правильный путь
+        test_file_names_path = "data/test_file_names.json"
         with open(test_file_names_path, "r") as f:
             self.test_file_names_data = json.load(f)
 
-        # Создание списка имен файлов для тестирования
-        # test_file_names = [item["file_name"] for item in self.test_file_names_data["images"]]
 
     def __len__(self):
         return len(self.image_names)
@@ -29,7 +27,6 @@ class TestDataset(Dataset):
         img_idx = self.test_file_names_data["images"][idx]["id"]
         img_path = os.path.join(self.image_folder, img_name)
 
-        # Загрузка изображения
         image = Image.open(img_path).convert("RGB")
 
         if self.transform:
@@ -43,7 +40,6 @@ test_loader = DataLoader(test_dataset, batch_size=4, shuffle=False)
 
 ids = pd.read_csv("data/submission.csv")["ID"].to_list()
 it = iter(ids)
-# print(ids.flatten())
 
 def infer_and_save_csv(model, dataloader, device, output_csv_path):
     model.eval()
@@ -56,16 +52,13 @@ def infer_and_save_csv(model, dataloader, device, output_csv_path):
             outputs = model(images)
 
             for i, output in enumerate(outputs):
-                # Преобразование боксов к ожидаемому формату
                 boxes = box_convert(output['boxes'], 'xyxy', 'xywh').cpu().numpy()
 
-                # Получение информации о категориях и оценках уверенности
                 labels = output['labels'].cpu().numpy()
                 scores = output['scores'].cpu().numpy()
 
                 image_id = image_ids[i].item()
 
-                # Преобразование результатов в требуемый формат
                 for box, label, score in zip(boxes, labels, scores):
                     if score > 0.5:
                         result = {
@@ -73,15 +66,13 @@ def infer_and_save_csv(model, dataloader, device, output_csv_path):
                             'image_id': image_id,
                             'category_id': label,
                             'bbox': box.tolist(),
-                            'area': box[2] * box[3],  # Площадь прямоугольника
-                            'segmentation': [],  # Ваш формат сегментации (если используется)
-                            'iscrowd': 0,  # Признак того, является ли объект группой
+                            'area': box[2] * box[3],
+                            'segmentation': [],
+                            'iscrowd': 0,
                             'score': score
                         }
                         results.append(result)
-                        # print(result)
 
-    # Создание DataFrame и сохранение в CSV
     while True:
         try:
             result = {
@@ -89,9 +80,9 @@ def infer_and_save_csv(model, dataloader, device, output_csv_path):
                             'image_id': -1,
                             'category_id': -1,
                             'bbox': "-1",
-                            'area': -1,  # Площадь прямоугольника
-                            'segmentation': [],  # Ваш формат сегментации (если используется)
-                            'iscrowd': 0,  # Признак того, является ли объект группой
+                            'area': -1,
+                            'segmentation': [],
+                            'iscrowd': 0,
                             'score': -1
                         }
             results.append(result)
@@ -105,11 +96,9 @@ def infer_and_save_csv(model, dataloader, device, output_csv_path):
 from torchvision.models.detection import fasterrcnn_resnet50_fpn
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 
-# Создайте модель с той же архитектурой, которую вы использовали для обучения
 model = fasterrcnn_resnet50_fpn(pretrained=False)
 
-# Замените последний слой (классификатор) на новый, с учетом числа классов вашей задачи
-num_classes = 12  # Замените на количество классов в вашей задаче
+num_classes = 12
 in_features = model.roi_heads.box_predictor.cls_score.in_features
 model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
 
